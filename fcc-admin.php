@@ -331,7 +331,7 @@ function fcc_admin_tools_page()
 
 
 /*--------------------------------------------------------------
-# Adds 'FCC PODCAST SETTINGS' network settings page
+# Adds 'FCC JW API' network settings page
 --------------------------------------------------------------*/
 
 /**
@@ -339,17 +339,17 @@ function fcc_admin_tools_page()
  * @since 1.16.10.05
  * @version 1.16.10.05
  */
-function fccpod_create_settings_menu() {
+function fcc_admin_create_settings_menu() {
 	add_submenu_page(
 		'settings.php',
-		'FCC Podcast Settings',
-		'FCC Podcast Settings',
+		'JW API Settings',
+		'JW API Settings',
 		'manage_network',
 		'fcc-podcast-settings',
-		'fccpod_site_options_page'
+		'fcc_jw_api_site_options_page'
 	);
 };
-add_action( 'network_admin_menu', 'fccpod_create_settings_menu' );
+add_action( 'network_admin_menu', 'fcc_admin_create_settings_menu' );
 
 
 /**
@@ -357,7 +357,7 @@ add_action( 'network_admin_menu', 'fccpod_create_settings_menu' );
  * @since 1.16.10.05
  * @version 1.16.10.05
  */
-function fccpod_site_options_page() {
+function fcc_jw_api_site_options_page() {
 	if ( is_multisite() && current_user_can( 'manage_network' ) ) {
 		if ( isset( $_POST['action'] ) && 'update_jw_api_settings' == $_POST['action'] ) {
 
@@ -370,12 +370,12 @@ function fccpod_site_options_page() {
 			update_site_option( 'jw_api_secret', $jw_api_secret );
 
 			// Just assume it all went according to plan
-			echo '<div id="message" class="updated fade"><p><strong>Podcast Settings Updated!</strong></p></div>';
+			echo '<div id="message" class="updated fade"><p><strong>JW API Settings Updated!</strong></p></div>';
 
 		} // END if POST
 		?>
 		<div class="wrap">
-		<h1>FCC Podcast Settings</h1>
+		<h1>JW API Settings</h1>
 
 		<form method="post">
 				<input type="hidden" name="action" value="update_jw_api_settings" />
