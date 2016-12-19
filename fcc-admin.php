@@ -1,98 +1,159 @@
 <?php
 /*
 Plugin Name: FCC Admin
-Description: Adds various site admin options, functions fixes and network settings.
-Version: 1.16.10.05
+Description: This plugin adds various site admin options, functions and fixes.
+Version: 1.16.05.16 (alt version, updated 10-31-16)
 Author: FCC Digital / Ryan Veitch
 Author http://forumcomm.com/
 License: GPLv2
-Network: True
 */
 
+/*------------------------------------------------------------------------------
+>>> TABLE OF CONTENTS:
+--------------------------------------------------------------------------------
+# Print FCC Help Commands
+# Fast Spam Removal
+# Cache Flushing: Flush Site Cache (Memcached) & Rewrite Rules
+# Cache Flushing: Network Wide
+# Available Shortcodes: Add Dropdown List Selector to TinyMCE Post Editor
+# Hide MemcacheD object-cache.php error admin nag
+------------------------------------------------------------------------------*/
 
-function set_lastupdated_to_lastpostdate2( $wpdb_blogid ) {
 
-  switch_to_blog( $wpdb_blogid );
-
-  $lastpostdate = get_lastpostdate( 'blog' );
-
-  // Update the last_updated time
-  //update_blog_details( $wpdb_blogid, array('last_updated' => $lastpostdate ) );
-
-  echo 'Last Post Date for site ' . $wpdb_blogid . ' updated to: ' . $lastpostdate . '<br>';
-  echo 'Last Updated Date for site ' . $wpdb_blogid . ' is currently: ' . get_blog_details( $blogId )->last_updated;
-
-  refresh_blog_details($wpdb_blogid);
-  restore_current_blog();
+/**
+ * Print FCC Help Commands
+ *
+ * @since 1.16.05.16
+ * @version 1.16.05.16
+ */
+function fcc_help() {
+	echo 'Permanently delete comments marked as "span" or "trash": fcc_kill_spam();' . '<br>';
+	echo 'Cache Flusing (Single Site): fcc_flush_cache();, fcc_flush();, flush_it_all();' . '<br>';
+	echo 'Cache Flusing (Network Wide): fcc_flush_network()' . '<br>';
 }
 
-
-//Function to set the last updated to the last post date in the sites table
-function set_lastupdated_to_lastpostdate3( $wpdb_blogid ) {
-  global $wpdb;
-
-  switch_to_blog( $wpdb_blogid );
-  //if(get_lastpostdate( 'blog' )){
-    $lastpostdate = get_lastpostdate( 'blog' );
-    $updated_array = array('last_updated' => $lastpostdate );
-    $wpdb->update( $wpdb->blogs, $updated_array, array('blog_id' => $wpdb_blogid) );
-    refresh_blog_details($wpdb_blogid);
-  //}
-
-  restore_current_blog();
-
-}
-
-/* Fast Spam Removal */
+/*--------------------------------------------------------------
+# Fast Spam Removal
+--------------------------------------------------------------*/
+/**
+ * Permanently delete comments marked as "span" or "trash":
+ *
+ * @since 1.15.11.23
+ * @version 1.15.11.23
+ */
 function fcc_kill_spam() {
-  global $wpdb;
-  $spam_comments_id_arr = $wpdb->get_col( "SELECT comment_id FROM {$wpdb->comments} WHERE comment_approved='spam' OR comment_approved='trash'" ) ;
-  if ( !empty( $spam_comments_id_arr ) ) {
-    $spam_comments_ids = implode( ', ', array_map('intval', $spam_comments_id_arr) );
-    $wpdb->query("DELETE FROM {$wpdb->comments} WHERE comment_id IN ( $spam_comments_ids )");
-    $wpdb->query("DELETE FROM {$wpdb->commentmeta} WHERE comment_id IN ( $spam_comments_ids )");
-    $wpdb->query( "OPTIMIZE TABLE $wpdb->comments" );
-    $wpdb->query( "OPTIMIZE TABLE $wpdb->commentmeta" );
-  }
-  if ( is_admin() ) echo 'complete';
+	global $wpdb;
+	$spam_comments_id_arr = $wpdb->get_col( "SELECT comment_id FROM {$wpdb->comments} WHERE comment_approved='spam' OR comment_approved='trash'" );
+	if ( ! empty( $spam_comments_id_arr ) ) {
+		$spam_comments_ids = implode( ', ', array_map('intval', $spam_comments_id_arr) );
+		$wpdb->query("DELETE FROM {$wpdb->comments} WHERE comment_id IN ( $spam_comments_ids )");
+		$wpdb->query("DELETE FROM {$wpdb->commentmeta} WHERE comment_id IN ( $spam_comments_ids )");
+		$wpdb->query( "OPTIMIZE TABLE $wpdb->comments" );
+		$wpdb->query( "OPTIMIZE TABLE $wpdb->commentmeta" );
+	}
+	if ( is_admin() ) echo 'complete';
+}
+
+/*--------------------------------------------------------------
+# Cache Flushing
+--------------------------------------------------------------*/
+/**
+ * Flush Site Cache (Memcached) & Rewrite Rules
+ *
+ * @since 1.16.05.16
+ * @version 1.16.05.16
+ */
+function fcc_flush_cache() {
+	global $wp_object_cache;
+	global $wp_rewrite;
+	$wp_rewrite->flush_rules();
+	flush_rewrite_rules();
+	wp_cache_delete( 'alloptions', 'options' );
+	wp_cache_flush();
+	refresh_blog_details();
+	echo 'Flushed all the things!';
+}
+
+# Function Wrapper for fcc_flush_cache()
+function fcc_flush() {
+	fcc_flush_cache();
+}
+
+# Function Wrapper fcc_flush_cache()
+function flush_it_all() {
+	fcc_flush_cache();
 }
 
 /**
-* Available Shortcodes: Add Dropdown List Selector to TinyMCE Post Editor
-* Documentation: http://wpsnipp.com/index.php/functions-php/update-automatically-create-media_buttons-for-shortcode-selection/#
-* Added 11/23/15
-*/
-add_action('media_buttons','add_sc_select',11);
-function add_sc_select(){
+ * Cache Flushing: Network Wide
+ *
+ * @since 1.16.05.16
+ * @version 1.16.05.16
+ */
+function fcc_flush_network() {
+	$blogs = $wpdb->get_col( "SELECT blog_id FROM $wpdb->blogs WHERE public = '1'" );
+	$cnt = count( $blogs );
+	if ( ! empty( $blogs ) ) {
+		foreach ( $blogs as $blog ) {
+			switch_to_blog( $blog );
+			fcc_flush_cache();
+			restore_current_blog();
+		}
+		echo 'Flushed all the things on ' . $cnt . ' public network sites.';
+	}
+}
 
-	global $shortcode_tags;
+/**
+ * Available Shortcodes: Add Dropdown List Selector to TinyMCE Post Editor
+ * Documentation: http://wpsnipp.com/index.php/functions-php/update-automatically-create-media_buttons-for-shortcode-selection/#
+ * Added 11/23/15
+ * Updated 10/31/16
+ */
+function add_sc_select() {
+	global $post;
+	if ( 'post' == $post->post_type ) {
+		global $shortcode_tags;
 
-	/* enter names of shortcode to exclude below: */
-	$exclude = array("wp_caption", "embed", "globalrecentposts");
+		/* enter names of shortcode to exclude below: */
+		$exclude = array(
+	    'wp_caption',
+	    'embed',
+	    'globalrecentposts',
+	    'fcc_jw_player',
+	    'shortcake_dev',
+	    'wangguard_reg',
+	    'wangguardcontact',
+	    'zilla_likes',
+		);
 
-	echo '&nbsp;<select id="sc_select"><option>Available Shortcodes</option>';
+		echo '&nbsp;<select id="sc_select"><option>Available Shortcodes</option>';
+		foreach ( $shortcode_tags as $key => $val ) {
+			if ( ! in_array( $key,$exclude ) ) {
+				$shortcodes_list .= '<option value="['.$key.'][/'.$key.']">'.$key.'</option>';
+			}
+		}
+		echo $shortcodes_list;
+		echo '</select>';
+	}
+}
+add_action( 'media_buttons','add_sc_select', 11 );
 
-    foreach ($shortcode_tags as $key => $val){
-            if(!in_array($key,$exclude)){
-            $shortcodes_list .= '<option value="['.$key.'][/'.$key.']">'.$key.'</option>';
-            }
-        }
-     echo $shortcodes_list;
-     echo '</select>';
-} //END add_sc_select
 
-add_action('admin_head', 'button_js');
-function button_js() {
-        echo '<script type="text/javascript">
-        jQuery(document).ready(function(){
-           jQuery("#sc_select").change(function() {
-                          send_to_editor(jQuery("#sc_select :selected").val());
-                          return false;
-                });
-        });
-        </script>';
-} //End button_js
-
+function fcc_sc_button_js() {
+	global $post;
+	if ( 'post' == $post->post_type ) {
+		echo '<script type="text/javascript">
+					jQuery(document).ready(function(){
+						jQuery("#sc_select").change(function() {
+							send_to_editor(jQuery("#sc_select :selected").val());
+							return false;
+						});
+					});
+					</script>';
+	}
+}
+add_action( 'admin_head-post.php', 'fcc_sc_button_js' );
+add_action( 'admin_head-post-new.php', 'fcc_sc_button_js' );
 
 /*
 * Hide Goodlayers/Simple Article Theme plugin banner messages from WP Admin Dashboard
@@ -127,206 +188,12 @@ if ( is_admin() ) {
   }
 }
 
-
-
 /*
-* Set New Blog Jetpack Default Options
-* Added 10/15/15
+* Prevent MemcacheD support check from running
+* Added 03/21/16
 */
-function fcc_new_site_options( $blog_id, $user_id, $domain, $path, $site_id, $meta ) {
-  /* Jetpack Auto-Connect / Subsite Register */
-    /*Set Variables*/
-    //$super_admin = '1';
-    //$current_user = get_current_user_id();
-  //Set UserID to SuperAdmin for Jetpack Registration//
-  /* if ( $current_user != $super_admin) { wp_set_current_user($super_admin); }
-    $jetpack_network = Jetpack_Network::init();
-    $jetpack_network->do_subsiteregister($blog_id);
-  wp_set_current_user($current_user); //return to original user */
-
-
-  //Switch to New Blog Site//
-  switch_to_blog( $blog_id );
-
-   //Jetpack Fallback Check//
-    /* $jp_active = get_option('jetpack_activated');
-    if ( $jp_active != 1 ) {
-      if ( $current_user != $super_admin) { wp_set_current_user($super_admin); }
-        $jetpack_network = Jetpack_Network::init();
-        $jetpack_network->do_subsiteregister($blog_id);
-      wp_set_current_user($current_user);
-    } */
-
-   //Set Posts-Per-Page//
-   update_option( 'posts_per_page', '5' );
-
-    //Set Theme//
-    $current_theme = wp_get_theme();
-     if ( $current_theme != 'AreaVoices') {
-       switch_theme( 'areavoices', 'areavoices' );
-     }
-
-    //Delete Initial Blog Post//
-    wp_delete_post( 1, 1 );
-
-    //Delete Sample Page//
-    wp_delete_post( 2, 1 );
-
-   /*Dismiss Admin Nag*/
-   //Jetpack_Options::update_option( 'dismissed_manage_banner', true );
-
-   //Set Jetpack Sharing Services//
-  /* $jp_sharing_services = array(
-      'visible' =>
-     array (
-       0 => 'facebook',
-       1 => 'twitter',
-       2 => 'google-plus-1',
-       3 => 'pinterest',
-       4 => 'reddit',
-     ),
-      'hidden' =>
-     array (
-       0 => 'email',
-       1 => 'linkedin',
-       2 => 'tumblr',
-       3 => 'pocket',
-       4 => 'press-this',
-       5 => 'print',
-     ),
-   );
-   update_option( 'sharing-services', $jp_sharing_services ); */
-
-   //Set Jetpack Sharing Options//
-  /* $jp_sharing_options = array(
-      'global' => (array( 'button_style' => 'icon', 'sharing_label' => false, 'open_links' => 'same',
-        'show'=> array( 0 => 'index', 1 => 'post', ),
-        'custom' => array(),
-     )),
-   );
-   update_option( 'sharing-options', $jp_sharing_options ); */
-
-   //Deactivate Widgets//
-   fcc_clear_widgets();
-
-   //Clear Options Cache to force update//
-   wp_cache_delete ( 'alloptions', 'options' );
-
-  //Return to Source//
-  restore_current_blog();
-}
-//add_action( 'wpmu_new_blog', 'fcc_new_site_options', 10); /* 200 for post-Jetpack, 10 for pre-jetpack
-
-/******************************************************************************
-
-/*
-* Admin Menu Setup
-*/
-add_action( 'admin_menu', 'fcc_admin_tools_menu' );
-function fcc_admin_tools_menu()
-{
-  if ( is_super_admin() ) { //Add the page for Super Admins only
-    add_submenu_page(
-      'ms-admin.php',
-      'FCC Admin',
-      'FCC Admin',
-      'manage_options',
-      'fcc_admin',
-      'fcc_admin_tools_page'
-    );
-    require plugin_dir_path( __FILE__ ) . 'fcc-admin-functions.php';
-  }
-}
-
-/*
-* Admin Page
-*/
-function fcc_admin_tools_page()
-{
-    global $blog_id, $wpdb, $wp_roles, $wp_rewrite, $current_user, $current_site;
-
-?>
-<div class="wrap">
-<?php
-    switch ( $_GET['action'] ) {
-      //---------------------------------------------------//
-        default:
-?>
-			<h2><?php _e( 'FCC Admin Tools' ) ?></h2>
-			<h3><?php _e( 'New Blog Setup' ) ?></h3>
-			<div class="wrap">
-        <form method="post" action="ms-admin.php?page=fcc_admin&action=fccexec">
-          <p class="submit">
-            <input type="submit" class="button-primary" name="Submit" value="<?php _e( 'Run AV Blog Setup & Conversion' ) ?>" />
-          </p>
-        </form>
-      </div>
-
-			<?php
-            break;
-            //---------------------------------------------------//
-        case "fccexec":
-        echo '<h2>Status:</h2><br>';
-
-        $blog_id = get_current_blog_id();
-
-        //Clear Options Cache to force update//
-        wp_cache_delete ( 'alloptions', 'options' );
-
-
-        //Set Theme to 'AreaVoices'//
-        fcc_set_av_theme();
-
-        /* Set Timezone */
-        update_option( 'timezone_string', 'America/Chicago' );
-        echo '<li>Timezone set to "America/Chicago"</li>';
-
-        //Set Homepage to diplay 'Posts'//
-        fcc_set_homepage();
-
-        //Set Posts-Per-Page to 5//
-        fcc_set_posts_per_page();
-
-        //Delete Initial Blog Post//
-        fcc_delete_first_post();
-
-        //Delete Sample Page//
-        fcc_delete_first_page();
-
-        //Insert Default Categories//
-        fcc_insert_default_categories();
-        echo '<li>Inserted default categories.</li>';
-
-        //Set the Default Post Category//
-        fcc_set_default_category();
-        echo '<li>Default post category set to "News"</li>';
-
-        //Deactivate Widgets//
-        fcc_clear_widgets();
-        echo '<li>All widgets set to "Inactive"</li>';
-
-				//Mark Site as Verified//
-				add_option( 'av-verified-site', '1' );
-				echo '<li>Site marked as "Verified"</li>';
-
-        /* Jetpack Activation */
-        //fcc_jetpack_activate();
-
-        /* Dismiss Jetpack Admin Nag */
-        //fcc_jp_dismissed_manage_banner();
-
-        /* Jetpack Activation */
-        fcc_jetpack_setup();
-
-        //Clear Options Cache to force update//
-        wp_cache_delete ( 'alloptions', 'options' );
-
-        echo '<p><em>Blog Setup/Conversion Complete!</em></p>';
-        break;
-    }
-?>
-</div>
-<?php
+if ( ! ( defined( 'DOING_AJAX' ) && DOING_AJAX ) ) {
+	remove_action( 'admin_init', 'wordpress_memcached_support_check_for_update' );
 }
 
 
