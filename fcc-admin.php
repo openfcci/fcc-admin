@@ -1,8 +1,8 @@
 <?php
 /*
 Plugin Name: FCC Admin
-Description: This plugin adds various site admin options, functions and fixes.
-Version: 1.16.05.16 (alt version, updated 10-31-16)
+Description: This plugin adds various network-wide and site admin options, functions and fixes.
+Version: 1.17.02.14
 Author: FCC Digital / Ryan Veitch
 Author http://forumcomm.com/
 License: GPLv2
@@ -11,13 +11,29 @@ License: GPLv2
 /*------------------------------------------------------------------------------
 >>> TABLE OF CONTENTS:
 --------------------------------------------------------------------------------
+# Fix SSL Attachment URL (Filter)
 # Print FCC Help Commands
 # Fast Spam Removal
 # Cache Flushing: Flush Site Cache (Memcached) & Rewrite Rules
 # Cache Flushing: Network Wide
 # Available Shortcodes: Add Dropdown List Selector to TinyMCE Post Editor
-# Hide MemcacheD object-cache.php error admin nag
+# Add 'FCC JW API' network settings page
 ------------------------------------------------------------------------------*/
+
+/**
+ * Fix SSL Attachment URL
+ *
+ * Fixes SSL protocol on get_the_post_thumbnail() and wp_get_attachment_url()
+ * @since 1.17.02.14
+ * @version 1.17.02.14
+ */
+function fcc_fix_ssl_attachment_url( $url ) {
+	if ( is_ssl() ) {
+		$url = str_replace( 'http://', 'https://', $url );
+	}
+	return $url;
+}
+add_filter( 'wp_get_attachment_url', 'fcc_fix_ssl_attachment_url' );
 
 
 /**
@@ -28,8 +44,30 @@ License: GPLv2
  */
 function fcc_help() {
 	echo 'Permanently delete comments marked as "span" or "trash": fcc_kill_spam();' . '<br>';
-	echo 'Cache Flusing (Single Site): fcc_flush_cache();, fcc_flush();, flush_it_all();' . '<br>';
-	echo 'Cache Flusing (Network Wide): fcc_flush_network()' . '<br>';
+	echo 'Cache Flushing (Single Site): fcc_flush_cache();, fcc_flush();, flush_it_all();' . '<br>';
+	echo 'Cache Flushing (Network Wide): fcc_flush_network();' . '<br>';
+	echo 'Force Jetpack to recheck HTTPS/SSL status: fcc_fix_ssl();' . '<br>';
+}
+
+/*--------------------------------------------------------------
+# Fix SSL
+--------------------------------------------------------------*/
+/**
+ * Temp fix for wonky image references in the JSON feed due to DSN or HTTPS issues.
+ *
+ * @since 1.16.12.25
+ * @version 1.16.12.25
+ */
+function fcc_fix_ssl() {
+	/* Reconnect JP HTTPS */
+	$result = Jetpack::permit_ssl( true );
+	if ( ! $result ) {
+		echo 'HTTPS: FAIL';
+	} elseif ( $result ) {
+		echo 'HTTPS: PASS';
+	}
+	fcc_flush();
+	echo 'Fixed all the things! (Hopefully)';
 }
 
 /*--------------------------------------------------------------
@@ -45,13 +83,15 @@ function fcc_kill_spam() {
 	global $wpdb;
 	$spam_comments_id_arr = $wpdb->get_col( "SELECT comment_id FROM {$wpdb->comments} WHERE comment_approved='spam' OR comment_approved='trash'" );
 	if ( ! empty( $spam_comments_id_arr ) ) {
-		$spam_comments_ids = implode( ', ', array_map('intval', $spam_comments_id_arr) );
-		$wpdb->query("DELETE FROM {$wpdb->comments} WHERE comment_id IN ( $spam_comments_ids )");
-		$wpdb->query("DELETE FROM {$wpdb->commentmeta} WHERE comment_id IN ( $spam_comments_ids )");
+		$spam_comments_ids = implode( ', ', array_map( 'intval', $spam_comments_id_arr ) );
+		$wpdb->query( "DELETE FROM {$wpdb->comments} WHERE comment_id IN ( $spam_comments_ids )" );
+		$wpdb->query( "DELETE FROM {$wpdb->commentmeta} WHERE comment_id IN ( $spam_comments_ids )" );
 		$wpdb->query( "OPTIMIZE TABLE $wpdb->comments" );
 		$wpdb->query( "OPTIMIZE TABLE $wpdb->commentmeta" );
 	}
-	if ( is_admin() ) echo 'complete';
+	if ( is_admin() ) {
+		echo 'complete'
+	};
 }
 
 /*--------------------------------------------------------------
@@ -155,50 +195,9 @@ function fcc_sc_button_js() {
 add_action( 'admin_head-post.php', 'fcc_sc_button_js' );
 add_action( 'admin_head-post-new.php', 'fcc_sc_button_js' );
 
-/*
-* Hide Goodlayers/Simple Article Theme plugin banner messages from WP Admin Dashboard
-* Added 10/03/15
-*/
-if ( is_admin() ) {
-  function hide_goodlayers_plugin_notifications(){
-         //if ( is_admin() ) {
-             echo '
-                 <style type="text/css">
-                   div#setting-error-tgmpa {
-                       display:none;
-                   }
-                 </style>
-             ';
-         //}
-  }
-  add_action('admin_head', 'hide_goodlayers_plugin_notifications');
-}
-
-/*
-* Hide MemcacheD object-cache.php error admin nag
-* Added 10/12/15
-*/
-if ( is_admin() ) {
-  add_action( 'init' , 'fcc_remove_memcached_nag' );
-  function fcc_remove_memcached_nag() {
-    $option = get_option( 'wordpress_memcached_support_notice' );
-    if ( $option = 'ERROR: could not create configured object-cache.php for your site, aborting' ) {
-      remove_action( 'admin_notices', 'wordpress_memcached_support_show_admin_notice' );
-    }
-  }
-}
-
-/*
-* Prevent MemcacheD support check from running
-* Added 03/21/16
-*/
-if ( ! ( defined( 'DOING_AJAX' ) && DOING_AJAX ) ) {
-	remove_action( 'admin_init', 'wordpress_memcached_support_check_for_update' );
-}
-
 
 /*--------------------------------------------------------------
-# Adds 'FCC JW API' network settings page
+# Add 'FCC JW API' network settings page
 --------------------------------------------------------------*/
 
 /**
@@ -249,12 +248,12 @@ function fcc_jw_api_site_options_page() {
 		    <table class="form-table">
 		        <tr valign="top">
 		        <th scope="row">JW API Key</th>
-		        <td><input type="text" name="jw_api_key" value="<?php echo esc_attr( get_site_option('jw_api_key') ); ?>" /></td>
+		        <td><input type="text" name="jw_api_key" value="<?php echo esc_attr( get_site_option( 'jw_api_key' ) ); ?>" /></td>
 		        </tr>
 
 		        <tr valign="top">
 		        <th scope="row">JW API Secret</th>
-		        <td><input type="text" name="jw_api_secret" value="<?php echo esc_attr( get_site_option('jw_api_secret') ); ?>" /></td>
+		        <td><input type="text" name="jw_api_secret" value="<?php echo esc_attr( get_site_option( 'jw_api_secret' ) ); ?>" /></td>
 		        </tr>
 		    </table>
 
